@@ -1,0 +1,122 @@
+---
+title: "01_Construction_jeux_donnees_ASPE_stations"
+author: "Julia"
+date: "2026-01-23"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Script permettant de construire un premier jeu de données destiné à visualiser les années échantillonnées pour chaque station.
+
+## Charger les packages
+
+```{r}
+library(aspe)
+library(dplyr)
+library(usethis)
+library(stringr)
+library(ggplot2)
+library(wesanderson)
+library(sf) #permet de manipuler des données spatiales
+```
+
+## Construire le jeu de données
+
+### Charger les données issues de la base Aspe
+
+```{r}
+data_aspe <- misc_nom_dernier_fichier(repertoire="~/Git/Projet_Poisson_Hydrobio/Data", pattern="^tables") #Permet de sélectionner les données téléchargées le plus récemment
+load(data_aspe)
+```
+
+### Mise en correspondance des tables principales
+
+Création d'une "passerelle" qui met en correspondance les identifiants des tables principales de la base
+
+```{r}
+passerelle <- aspe::mef_creer_passerelle()
+```
+### Définition de nos paramètres
+Nous allons définir des paramètres qui vont nous permettre de simplifier les codes lors de la construction de notre jeux de données
+
+```{r}
+code_departement <- c("14","27","28","76", "61","50") #Départements qui nous intéressent
+
+station_suivie <- st_read("~/Git/Projet_Poisson_Hydrobio/Data/Stations_peche.gpkg") %>% #lecture du geopackage contenant la liste des stations que l'on étudie
+  filter(Etat== "actif") #sélection des stations actives
+
+```
+
+Pour alléger les requêtes, on commence par sélectionner les départements correspondant à notre étude.
+
+```{r}
+aspe_nor <- passerelle %>% 
+  mef_ajouter_dept() %>% 
+  filter(dept %in% code_departement)%>%#Sélection des 5 départements normands 
+  mef_ajouter_ope_date() #on ajoute les dates
+```
+
+On fait une jointure afin d'associer les codes SANDRE et les libellés SANDRE à chaque station. Cela nous permettra ensuite de pouvoir sélectionner nos stations de travail à l'aide du code SANDRE.
+
+```{r}
+aspe_nor <- aspe_nor %>%
+  inner_join(station, by=join_by(sta_id==sta_id))%>%
+  select(sta_id,pop_id,ope_id,pre_id,lop_id,dept, ope_date, annee, sta_code_sandre,sta_libelle_sandre) #sélectionner seulement les variables d'intéret
+```
+
+## Sélectionner les stations qui nous intéressent
+
+On va à présent créer deux objets. Le premier "mes_stations" contiendra tous les codes SANDRE de nos stations de travail. L'objet "annee_depart" nous permettra de fixer l'année choisie pour commencer les analyses.
+
+```{r}
+mes_stations<-pull(station_suivie,var=Code.Station.SANDRE)
+annee_depart <- 2007
+```
+
+Ensuite nous sélectionnons les stations et les années qui nous intéressent.
+
+```{r}
+aspe_nor<- aspe_nor%>%
+  filter(sta_code_sandre %in% mes_stations) %>%
+  filter(annee >= annee_depart)
+```
+
+Nous faisons une jonction avec le tableau station_peche pour récupérer les réseaux auxquels elles correspondent.
+
+```{r}
+aspe_nor<- aspe_nor%>%
+  inner_join(station_suivie, by=join_by(sta_code_sandre==Code.Station.SANDRE))%>%
+  select(-url_reseau, -code_sta_pp, -CODE.PP, -LIBELLE.SANDRE, -oldREF) %>%
+group_by (sta_libelle_sandre,annee)%>%
+  mutate (sta_libelle_sandre=str_to_sentence(str_to_lower(sta_libelle_sandre)))#Mettre une majuscule au début des libellés puis mettre la suite en minuscules
+```
+
+### Représentation graphique temporelle de la disponibilité des données
+```{r}
+graph_stations_complet <- ggplot(data=aspe_nor, aes(x = annee, y=as.character(sta_libelle_sandre),
+             fill= RESEAUX)) + 
+  geom_tile() +
+  labs(title = "Les stations sélectionnées et les réseaux associés par années",
+       subtitle = "Région Normandie", 
+       x ="Années",
+       y = "",
+       fill = "Réseaux") + 
+  theme(plot.title = element_text(size=10),
+        plot.subtitle = element_text(size=8),
+        axis.title.x=element_text(size=8),
+        axis.text.x=element_text(size=8),
+        axis.text.y = element_text(size=8),
+        legend.title=element_text(size=5),
+        legend.text=element_text(size = 5),
+        legend.position = "bottom")+
+  guides(fill=guide_legend(nrow=1)) 
+
+graph_stations_complet
+```
+
+```{r}
+ggsave("graph_stations_complet.pdf", plot=graph_stations_complet, width=12, height=20)
+```
