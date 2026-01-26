@@ -1,0 +1,116 @@
+---
+title: "00_Recuperation_donnees_hydrobio"
+author: "Julia"
+date: "2026-01-23"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Script Permettant de récupérer les données d'hydrobiologie à partir de l'API Hub'Eau
+
+## Chargement des packages
+
+```{r}
+library(hubeau) #fournit les fonctions pour appeler l'API
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(tidyverse)
+library(sf) #permet de manipuler des données spatiales
+library(lubridate)
+library(here) #permet d'appeler des fonctions qui se trouvent dans notre répertoire de travail
+```
+
+L'API hydrobiologie développée par Hub'Eau donne accès à trois tables provenant de la base de données NAIADES:
+
+-   stations
+
+-   indices
+
+-   taxons
+
+Dans un premier temps, nous allons accéder à la table "stations" pour récupérer les codes des stations échantillonnées pour l'hydrobiologie ainsi que leurs informations
+
+## Récupérer toutes les stations, situées en Normandie, où des prélèvements hydrobiologiques ont eu lieu.
+
+Pour récupérer les données, nous allons utiliser des fonctions définies dans le fichier "fun_get_data_hydrobio.R" qui se trouve dans notre répertoire de travail.
+
+## Chargement des fonctions
+
+```{r}
+source(here::here("R","fun_get_data_hydrobio.R"))
+```
+
+## Définition des paramètres nécessaires au fonctionnement des fonctions
+
+```{r message=FALSE}
+code_departement <- c("14","27","28","76", "61","50") #Départements qui nous intéressent
+
+station_suivie <- st_read("~/Git/Projet_Poisson_Hydrobio/Data/Stations_peche.gpkg") %>% #lecture du geopackage contenant la liste des stations que l'on étudie
+  filter(Etat== "actif") #sélection des stations actives
+
+code_indice <- c(`I2M2` = 7613, `IBMR` = 2928, `IBD` = 5856) # I2M2 (7613), IBMR (2928), IBD (5856)
+
+code_eqb <- c(`Diatomées` = 10, `Macroinvertébrés` = 13, `Macrophytes` = 27)#Un vecteur nommé de codes des éléments de qualité biologique.
+
+annee_depart <- 2010
+```
+
+## 1. Télécharger les stations hydrobiologiques correspondant aux stations suivies
+
+```{r}
+stations <- telecharger_stations(code_departement, station_suivie)
+```
+
+## 2. Télécharger les indices
+
+A présent, nous allons accéder à la table "indices" pour récupérer les indices disponibles pour chaque stations. On utilise les même paramètres définis précédemment.
+
+```{r}
+indices <- telecharger_indices(code_departement, station_suivie, code_indice, annee_depart)
+```
+
+### Représenter sous forme de heatmap le nombre d'indices que nous avons par année
+
+Cette représentation graphique va nous permettre de sélectionner les stations qui seront les plus intéressantes à analyser.
+
+```{r}
+indices_presence <- indices %>%
+  group_by(code_station_hydrobio, libelle_station_hydrobio, annee, code_departement)%>%
+  summarise( nb_indices=n_distinct(libelle_indice),
+             .groups="drop")%>%
+  mutate(nb_indices=factor(nb_indices))
+```
+
+```{r}
+ggplot(indices_presence, aes(x=annee, y= libelle_station_hydrobio, fill= nb_indices))+
+  geom_tile()+
+  scale_fill_manual(
+    values = c("0"="white", "1"="yellow", "2"="orange","3"="red"),
+    name= "Nombre d'indices disponibles")+
+  theme_minimal()+
+  labs(
+    x="Années",
+    y="",
+    title="Disponibilité des indices par station et par année"
+  )+
+  theme(plot.title = element_text(size=12),
+        plot.subtitle = element_text(size=10),
+        axis.title.x=element_text(size=10),
+        axis.text.x=element_text(size=6),
+        axis.text.y = element_text(size=3),
+        legend.title=element_text(size=5),
+        legend.text=element_text(size = 5),
+        legend.position = "bottom")+
+  guides(fill=guide_legend(nrow=1))+
+  scale_x_continuous(breaks=seq(min(indices_presence$annee),max(indices_presence$annee)))
+```
+
+## 3. Télécharger les listes faunistiques et floristiques
+
+```{r}
+liste <- telecharger_listes(code_departement, station_suivie, code_eqb, annee_depart)
+```
