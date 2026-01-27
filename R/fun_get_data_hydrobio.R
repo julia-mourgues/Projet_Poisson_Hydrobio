@@ -28,6 +28,7 @@ telecharger_stations <- function(code_departement, station_suivie) {
       libelle_masse_eau, code_departement,
       date_premier_prelevement, date_dernier_prelevement
       ) %>%
+    dplyr::mutate (libelle_station_hydrobio=str_to_sentence(str_to_lower(libelle_station_hydrobio)))%>%
     sf::st_as_sf(
       coords = c("coordonnee_x", "coordonnee_y"),
       crs = 2154,
@@ -80,15 +81,15 @@ telecharger_indices <- function(code_departement, station_suivie, code_indice, a
       date_prelevement = lubridate::as_date(date_prelevement)
     ) %>%
     dplyr::mutate(annee = lubridate::year(date_prelevement)) %>%
+    dplyr::mutate (libelle_station_hydrobio=str_to_sentence(str_to_lower(libelle_station_hydrobio)))%>%
     dplyr::filter(!is.na(resultat_indice)) %>%
     dplyr::filter(code_station_hydrobio %in% station_suivie$Code.Station.SANDRE)%>%
-    filter(annee >= annee_depart)
+    dplyr::filter(annee >= annee_depart)
 }
 
 
 #' Télécharger les listes faunistiques et floristiques
 #'
-#' @param code_departement Un vecteur de codes départements (format : "01", "02", etc.)
 #' @param code_eqb Un vecteur nommé de codes des éléments de qualité biologique. Par défaut :
 #'    Diatomées (10), Macroinvertébrés (13), Macrophytes (27)
 #' @param station_suivie Un data.frame contenant les stations qui nous interessent
@@ -99,9 +100,8 @@ telecharger_indices <- function(code_departement, station_suivie, code_indice, a
 #' @export
 #'
 #' @details Cette fonction télécharge les listes faunistiques et floristiques depuis l'API Hub'Eau
-#'   pour les départements, les stations et éléments de qualité biologique spécifiés. En cas d'erreur lors du
-#'   téléchargement global, la fonction tente de télécharger les données station par station.
-#'   Les abondances des taxons sont sommées par prélèvement.
+#'   pour les stations et éléments de qualité biologique spécifiés. En cas d'erreur lors du
+#'   téléchargement global, la fonction tente de télécharger les données année par année.
 #'
 #' @examples
 #' \dontrun{
@@ -111,11 +111,11 @@ telecharger_indices <- function(code_departement, station_suivie, code_indice, a
 #' @importFrom dplyr group_by summarise pull
 #' @importFrom hubeau get_hydrobio_taxons get_hydrobio_stations_hydrobio
 #' @importFrom purrr map list_rbind
-telecharger_listes <- function(code_departement, station_suivie, code_eqb, annee_depart) {
+telecharger_listes <- function(station_suivie, code_eqb, annee_depart) {
 
   listes <- try(
     hubeau::get_hydrobio_taxons(
-      code_departement = paste(code_departement, collapse = ","),
+      code_station_hydrobio= paste(station_suivie$Code.Station.SANDRE, collapse = ","),
       code_support = paste(code_eqb, collapse = ",")
     ) %>%
       dplyr::group_by(
@@ -129,144 +129,50 @@ telecharger_listes <- function(code_departement, station_suivie, code_eqb, annee
         .groups = "drop"
       )%>%
       dplyr::filter(code_station_hydrobio %in% station_suivie$Code.Station.SANDRE)%>%
-      filter(annee >= annee_depart)
+      dplyr::mutate (libelle_station_hydrobio=str_to_sentence(str_to_lower(libelle_station_hydrobio)))%>%
+      dplyr::mutate(annee = lubridate::year(date_prelevement))%>%
+      dplyr::filter(annee >= annee_depart),
+    silent=TRUE
   )
 
-  if (class(listes) == "try-error") {
-    stations <- hubeau::get_hydrobio_stations_hydrobio(
-      code_departement = paste(code_departement, collapse = ",")
-    ) %>%
-      dplyr::pull(code_station_hydrobio)
-
-    listes <- purrr::map(
-      .x = stations,
-      .f = function (x) {
-        taxons <- try(
-          hubeau::get_hydrobio_taxons(
-            code_station_hydrobio = x,
-            code_support = paste(code_eqb, collapse = ",")
-            )
-          )
-
-        trials <- 1
-        while (all(class(taxons) == "try-error" & trials <= 10)) {
-          taxons <- try(
-            hubeau::get_hydrobio_taxons(
-              code_station_hydrobio = x,
-              code_support = paste(code_eqb, collapse = ",")
-            )
-          )
-
-          trials <- trials + 1
-        }
-
-        if (any(class(taxons) == "try-error")) {
-          warning(paste0("Station ", x, ": erreur de téléchargement des listes"))
-        } else {
-          taxons %>%
-            (function(df_temp) {
-              if (nrow(df_temp) != 0) {
-                df_temp %>%
-                  dplyr::group_by(
-                    code_station_hydrobio, libelle_station_hydrobio,
-                    code_prelevement, date_prelevement,
-                    code_support, libelle_support, code_appel_taxon, libelle_appel_taxon,
-                    coordonnee_x, coordonnee_y
-                  ) %>%
-                  dplyr::summarise(
-                    resultat_taxon = sum(resultat_taxon),
-                    .groups = "drop"
-                  )
-              } else {
-                df_temp
-              }
-              })
-        }
-      },
-      .progress = TRUE
-    ) %>%
-      purrr::list_rbind()
-  }
-
-  listes
-}
-
-
-#' Importer les données de suivi en régie
-#'
-#' @param chemin_xlsx Le chemin vers le fichier Excel contenant les données de suivi en régie
-#'
-#' @return Un data.frame contenant les informations de suivi en régie avec les colonnes suivantes :
-#'   cours_deau, commune, code_station, indice, annee, realisation, code_indice
-#' @export
-#'
-#' @details Cette fonction importe les données de suivi en régie à partir d'un fichier Excel.
-#'   Elle nettoie les noms de colonnes, pivote les données pour obtenir un format long,
-#'   et ajoute les codes indices correspondant aux différents protocoles (IBD, MPCE, IBMR).
-#'   Pour les MPCE, elle duplique les lignes pour ajouter le code I2M2 en plus du code IBG.
-#'
-#' @examples
-#' \dontrun{
-#' suivi_regie <- importer_suivis_regie("chemin/vers/fichier.xlsx")
-#' }
-#'
-#' @importFrom dplyr mutate filter select case_when bind_rows
-#' @importFrom janitor clean_names
-#' @importFrom openxlsx2 read_xlsx
-#' @importFrom purrr map_dfr
-#' @importFrom stringr str_extract_all
-#' @importFrom tidyr pivot_longer
-importer_suivis_regie <- function(chemin_xlsx) {
-  openxlsx2::read_xlsx(chemin_xlsx) %>%
-    janitor::clean_names() %>%
-    (function(df_xl) {
-      colnames(df_xl)[seq(3)] <- df_xl[1,seq(3)] %>%
-        janitor::make_clean_names()
-
-      indices <- df_xl[1,-seq(4)] %>%
-        t() %>%
-        as.vector() %>%
-        unique() %>%
-        na.omit()
-
-      purrr::map_dfr(
-        indices,
-        function(i) {
-          df_xl[-1,c(seq(4), which(as.vector(t(df_xl[1,])) == i))] %>%
-            tidyr::pivot_longer(
-              cols = -seq(4),
-              names_to = "annee",
-              values_to = "realisation"
-            ) %>%
-            dplyr::mutate(
-              annee = annee %>%
-                stringr::str_extract_all(
-                  pattern = "\\d{4}"
-                ) %>%
-                as.numeric(),
-              indice = i
-            ) %>%
-            dplyr::filter(realisation %in%  c("0", "1")) %>%
-            dplyr::select(
-              cours_deau, commune, code_station, indice, annee, realisation
-            )
-        }
+  if (inherits(listes, "try-error")) {
+    
+    message("Téléchargement global échoué → fallback année par année")
+    
+    annees <- annee_depart:lubridate::year(Sys.Date())
+    
+    listes_par_annee <- list()
+    
+    for (a in annees) {
+      
+      message("Téléchargement pour l’année : ", a)
+      
+      annual <- try(
+        hubeau::get_hydrobio_taxons(
+          code_station_hydrobio = paste(station_suivie$Code.Station.SANDRE, collapse = ","),
+          code_support = paste(code_eqb, collapse = ","),
+          date_debut_prelevement = paste0(a, "-01-01"),
+          date_fin_prelevement   = paste0(a, "-12-31")
+        ),
+        silent = TRUE
+      )
+      
+      if (!inherits(annual, "try-error") && nrow(annual) > 0) {
+        listes_par_annee[[as.character(a)]] <- annual
+      }
+    }
+    
+    # Fusion des années
+    listes <- dplyr::bind_rows(listes_par_annee)
+    
+    # Post-traitement
+    listes <- listes %>%
+      dplyr::mutate(
+        annee = lubridate::year(date_prelevement),
+        libelle_station_hydrobio = stringr::str_to_sentence(stringr::str_to_lower(libelle_station_hydrobio))
       ) %>%
-        dplyr::mutate(
-          code_indice = dplyr::case_when(
-            indice == "IBD" ~ "5856",
-            indice == "MPCE" ~ "5910",
-            indice == "IBMR" ~ "2928"
-          )
-        ) %>%
-        (function(df) {
-          dplyr::bind_rows(
-            df,
-            df %>%
-              dplyr::filter(indice == "MPCE") %>%
-              dplyr::mutate(code_indice = "7613")
-          )
-        })
-
-    })
+      dplyr::filter(annee >= annee_depart)
+  }
+  
+  return(listes)
 }
