@@ -56,7 +56,8 @@ Pour alléger les requêtes, on commence par sélectionner les départements cor
 aspe_nor <- passerelle %>% 
   mef_ajouter_dept() %>% 
   filter(dept %in% code_departement)%>%#Sélection des 5 départements normands 
-  mef_ajouter_ope_date() #on ajoute les dates
+  mef_ajouter_ope_date() %>%#on ajoute les dates
+  mef_ajouter_qualification()
 ```
 
 On fait une jointure afin d'associer les codes SANDRE et les libellés SANDRE à chaque station. Cela nous permettra ensuite de pouvoir sélectionner nos stations de travail à l'aide du code SANDRE.
@@ -64,7 +65,7 @@ On fait une jointure afin d'associer les codes SANDRE et les libellés SANDRE à
 ```{r}
 aspe_nor <- aspe_nor %>%
   inner_join(station, by=join_by(sta_id==sta_id))%>%
-  select(sta_id,pop_id,ope_id,pre_id,lop_id,dept, ope_date, annee, sta_code_sandre,sta_libelle_sandre) #sélectionner seulement les variables d'intéret
+  select(sta_id,pop_id,ope_id,pre_id,lop_id,dept, ope_date, annee, sta_code_sandre,sta_libelle_sandre, niq_libelle) #sélectionner seulement les variables d'intéret
 ```
 
 ## Sélectionner les stations qui nous intéressent
@@ -81,7 +82,8 @@ Ensuite nous sélectionnons les stations et les années qui nous intéressent.
 ```{r}
 aspe_nor<- aspe_nor%>%
   filter(sta_code_sandre %in% mes_stations) %>%
-  filter(annee >= annee_depart)
+  filter(annee >= annee_depart)%>%
+  filter(niq_libelle=="Correcte")
 ```
 
 Nous faisons une jonction avec le tableau station_peche pour récupérer les réseaux auxquels elles correspondent.
