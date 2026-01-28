@@ -56,9 +56,10 @@ code_indice <- c(`I2M2` = 7613, `IBMR` = 2928, `IBD` = 5856) # I2M2 (7613), IBMR
 
 code_eqb <- c(`Diatomées` = 10, `Macroinvertébrés` = 13, `Macrophytes` = 27)#Un vecteur nommé de codes des éléments de qualité biologique.
 
+code_support <- c("10", "13","27")
+
 annee_depart <- 2010
 ```
-
 ## 1. Télécharger les stations hydrobiologiques correspondant aux stations suivies
 
 ```{r}
@@ -68,49 +69,121 @@ stations <- telecharger_stations(code_departement, station_suivie)
 ## 2. Télécharger les indices
 
 A présent, nous allons accéder à la table "indices" pour récupérer les indices disponibles pour chaque stations. On utilise les même paramètres définis précédemment.
+Les données sont caractérisées par un niveau de conformité. Ici nous choisissons de travailler seulement sur les données qualifiées de "correctes", ce qui correspond au code qualification "1".
 
 ```{r}
-indices <- telecharger_indices(code_departement, station_suivie, code_indice, annee_depart)
+indices <- telecharger_indices(code_departement, station_suivie, code_indice, annee_depart)%>%
+  group_by(libelle_indice, annee, code_qualification)%>%
+  filter(code_qualification=="1")
 ```
 
-### Représenter sous forme de heatmap le nombre d'indices que nous avons par année
-
-Cette représentation graphique va nous permettre de sélectionner les stations qui seront les plus intéressantes à analyser.
+### Représenter la disponibilité des données par années pour chaque indice
 
 ```{r}
-indices_presence <- indices %>%
-  group_by(code_station_hydrobio, libelle_station_hydrobio, annee, code_departement)%>%
-  summarise( nb_indices=n_distinct(libelle_indice),
-             .groups="drop")%>%
-  mutate(nb_indices=factor(nb_indices))
+indices_142728 <- indices%>%
+  filter(code_departement %in% c("14","27","28"))
 ```
 
 ```{r}
-ggplot(indices_presence, aes(x=annee, y= libelle_station_hydrobio, fill= nb_indices))+
-  geom_tile()+
-  scale_fill_manual(
-    values = c("0"="white", "1"="yellow", "2"="orange","3"="red"),
-    name= "Nombre d'indices disponibles")+
-  theme_minimal()+
-  labs(
-    x="Années",
-    y="",
-    title="Disponibilité des indices par station et par année"
-  )+
-  theme(plot.title = element_text(size=12),
-        plot.subtitle = element_text(size=10),
-        axis.title.x=element_text(size=10),
-        axis.text.x=element_text(size=6),
-        axis.text.y = element_text(size=3),
+# Dictionnaire de correspondance pour ce graphique
+labels_map <- c(
+  "Indice Biologique Macrophytique en Rivière (I.B.M.R.)" = "IBMR",
+  "Indice Invertébrés Multimétrique (I2M2)" = "I2M2",
+  "Indice Biologique Diatomées (IBD)" = "IBD"
+)
+```
+
+```{r}
+graph_indices_142728 <- ggplot(data=indices_142728, aes(x = annee, y=as.character(libelle_station_hydrobio), fill=libelle_indice )) +
+  facet_wrap(vars(libelle_indice), labeller = labeller(libelle_indice = labels_map)) +
+  geom_tile() +
+  labs(title = "Disponibilité des indices par années et par station (Départements 14, 27 et 28)",
+       x ="Années",
+       y = "") + 
+  theme(plot.title = element_text(size=10),
+        plot.subtitle = element_text(size=8),
+        axis.title.x=element_text(size=8),
+        axis.text.x=element_text(size=8),
+        axis.text.y = element_text(size=6),
+        strip.text = element_text(size = 5),
         legend.title=element_text(size=5),
         legend.text=element_text(size = 5),
-        legend.position = "bottom")+
-  guides(fill=guide_legend(nrow=1))+
-  scale_x_continuous(breaks=seq(min(indices_presence$annee),max(indices_presence$annee)))
-```
+        legend.position = "none")+
+  guides(fill=guide_legend(nrow=1)) 
 
-## 3. Télécharger les listes faunistiques et floristiques
+graph_indices_142728
+```
 
 ```{r}
-liste <- telecharger_listes(code_departement, station_suivie, code_eqb, annee_depart)
+indices_5061761 <- indices%>%
+  filter(code_departement %in% c("50","61","76"))
 ```
+```{r}
+graph_indices_5061761 <- ggplot(data=indices_5061761, aes(x = annee, y=as.character(libelle_station_hydrobio), fill=libelle_indice )) +
+  facet_wrap(vars(libelle_indice), labeller = labeller(libelle_indice = labels_map)) +
+  geom_tile() +
+  labs(title = "Disponibilité des indices par années et par station (Départements 50, 61 et 76)", 
+       x ="Années",
+       y = "") + 
+  theme(plot.title = element_text(size=9),
+        plot.subtitle = element_text(size=7),
+        axis.title.x=element_text(size=7),
+        axis.text.x=element_text(size=7),
+        axis.text.y = element_text(size=6),
+        strip.text = element_text(size = 5),
+        legend.title=element_text(size=5),
+        legend.text=element_text(size = 5),
+        legend.position = "none")+
+  guides(fill=guide_legend(nrow=1)) 
+
+graph_indices_5061761
+```
+
+## 3.1 Télécharger les listes faunistiques et floristiques sans package Hubeau
+Le téléchargement prend du temps car il y a énormément de données. Il est important de bien choisir l'année de départ pour limiter le temps de téléchagrment. 
+
+```{r}
+liste <- telecharger_listes( code_departement, station_suivie, code_eqb, annee_depart)
+#avec ces paramètres on obtient une liste de 199767 observations et 90 variables
+```
+
+## 3.2 Télécharger les listes faunistiques et floristiques avec package Hubeau
+On doit faire le chargement des données en plusieurs fois car l'API ne permet de télecharger 20 000 données à la fois.
+On décide donc de fractionner le téléchargement par années.Il y a environ 14000 lignes par années.
+```{r}
+mes_stations <-station_suivie$Code.Station.SANDRE
+```
+
+```{r}
+taxons_av2019 <- get_hydrobio_taxons(code_station_hydrobio=mes_stations, code_support=code_support, code_qualification="1", date_fin_prelevement= "2019-01-01")
+```
+
+```{r}
+taxons_2019_2020 <- get_hydrobio_taxons(code_station_hydrobio=mes_stations, code_support=code_support, code_qualification="1", date_debut_prelevement= "2019-01-01", date_fin_prelevement="2020-01-01")
+```
+
+```{r}
+taxons_2020_2021 <- get_hydrobio_taxons(code_station_hydrobio=mes_stations, code_support=code_support, code_qualification="1", date_debut_prelevement= "2020-01-01", date_fin_prelevement="2021-01-01")
+```
+
+```{r}
+taxons_2021_2022 <- get_hydrobio_taxons(code_station_hydrobio=mes_stations, code_support=code_support, code_qualification="1", date_debut_prelevement= "2021-01-01", date_fin_prelevement="2022-01-01")
+```
+
+```{r}
+taxons_2022_2023 <- get_hydrobio_taxons(code_station_hydrobio=mes_stations, code_support=code_support, code_qualification="1", date_debut_prelevement= "2022-01-01", date_fin_prelevement="2023-01-01")
+```
+
+```{r}
+taxons_2023_2024 <- get_hydrobio_taxons(code_station_hydrobio=mes_stations, code_support=code_support, code_qualification="1", date_debut_prelevement= "2023-01-01", date_fin_prelevement="2024-01-01")
+```
+
+```{r}
+taxons_ap2024 <- get_hydrobio_taxons(code_station_hydrobio=mes_stations, code_support=code_support, code_qualification="1", date_debut_prelevement= "2024-01-01")
+```
+
+
+```{r}
+taxons <- bind_rows(taxons_ap2024, taxons_2023_2024, taxons_2022_2023,taxons_2021_2022,taxons_2020_2021,taxons_2019_2020,taxons_av2019)
+```
+
