@@ -89,7 +89,8 @@ telecharger_indices <- function(code_departement, station_suivie, code_indice, a
 
 
 #' Télécharger les listes faunistiques et floristiques
-#'
+#' 
+#' @param code_departement Un vecteur de codes départements (format : "01", "02", etc.)
 #' @param code_eqb Un vecteur nommé de codes des éléments de qualité biologique. Par défaut :
 #'    Diatomées (10), Macroinvertébrés (13), Macrophytes (27)
 #' @param station_suivie Un data.frame contenant les stations qui nous interessent
@@ -111,10 +112,11 @@ telecharger_indices <- function(code_departement, station_suivie, code_indice, a
 #' @importFrom dplyr group_by summarise pull
 #' @importFrom hubeau get_hydrobio_taxons get_hydrobio_stations_hydrobio
 #' @importFrom purrr map list_rbind
-telecharger_listes <- function(station_suivie, code_eqb, annee_depart) {
+telecharger_listes <- function(code_departement, station_suivie, code_eqb, annee_depart) {
 
   listes <- try(
     hubeau::get_hydrobio_taxons(
+      code_departement = paste(code_departement, collapse = ","),
       code_station_hydrobio= paste(station_suivie$Code.Station.SANDRE, collapse = ","),
       code_support = paste(code_eqb, collapse = ",")
     ) %>%
@@ -149,6 +151,7 @@ telecharger_listes <- function(station_suivie, code_eqb, annee_depart) {
       
       annual <- try(
         hubeau::get_hydrobio_taxons(
+          code_departement = paste(code_departement, collapse = ","),
           code_station_hydrobio = paste(station_suivie$Code.Station.SANDRE, collapse = ","),
           code_support = paste(code_eqb, collapse = ","),
           date_debut_prelevement = paste0(a, "-01-01"),
