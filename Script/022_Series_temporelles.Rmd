@@ -1,0 +1,97 @@
+---
+title: "04_Series_temporelles"
+author: "Julia"
+date: "2026-01-30"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Script permettant d'identifier les séries temporelles et les stations que nous allons étudier ensuite
+
+## Chargement des packages
+
+```{r}
+library(dplyr)
+library(usethis)
+library(stringr)
+library(ggplot2)
+library(tidyverse)
+library(wesanderson)
+library(sf) #permet de manipuler des données spatiales
+library(lubridate)
+```
+
+## Chargement des fonctions
+
+```{r}
+source(here::here("R","fun_borner_series.R"))
+```
+
+## Définition des paramètres nécessaires au fonctionnement des fonctions
+
+```{r}
+annee_depart <- 2010
+
+annee_fin <- 2025
+
+min_nb_annees <- 7
+
+n_max_manquant <- 2
+
+nb_indices_requis <-3
+
+ma_station <- "04115580" #utilisé pour tester et vérifier mon code
+```
+
+## Arrangement des données
+
+### 1. Sélection de l'échantillonnage le plus tardif de l'année pour n'avoir qu'une seule donnée par indice par an.
+
+```{r}
+selection_serie <- selection_serie%>%
+  group_by(code_station,annee, date_prelevement, code_prelevement,code_support)%>%
+  filter(date_prelevement==max(date_prelevement)) 
+```
+
+### 2. Calcul du nombre d'indices disponibles pour chaque station et chaque annéee
+
+```{r}
+selection_nb_indices <- selection_serie %>%
+  group_by(code_station, annee) %>%
+  summarise(
+    n_indice = n_distinct(code_indice),
+    .groups = "drop")%>%
+  filter(n_indice>=nb_indices_requis) #on retient les années pour lesquelles on a suffisament d'indices
+```
+
+### 3. Identification des séries temporelles
+
+On va utiliser la fonction "borner_series" disponible dans notre répertoire pour sélectionner les stations suivies depuis suffisamment longtemps et pour lesquelles on a un nombre de données suffisantes.
+
+```{r}
+station_serie_tempo <- selection_nb_indices %>%
+  borner_series(var_id_site=code_station, #variable servant à identifier notre site
+                var_temp=annee,
+                max_nb_obs_manquantes=n_max_manquant) #maximum de valeurs manquantes accepté (défini dans les paramètres)
+```
+
+### 4. Sélection des stations dont les séries temporelles répondent à nos critères
+
+On a obtenu un dataframe contenant la première année d'échantillonnage de la station, l'année de début de la série temporelle, l'année de fin de la série temporelle, le nombre d'années faisant parties de la série temporelle. A présent on filtre les stations pour garder celles qui dont les séries temporelles remplissent nos critères.
+
+```{r}
+station_selectionnees <-station_serie_tempo %>%
+  filter(n_annee>=min_nb_annees)%>% #on garde les stations pour lesquelles on a un nombre d'années suffisant
+  select(-annee_mini)%>%
+  pull(code_station)
+```
+
+On sélectionne dans notre base de données les stations qui satisfont nos critères.
+
+```{r}
+selection_serie_finale <- selection_serie %>%
+  filter(code_station %in% station_selectionnees)
+```
