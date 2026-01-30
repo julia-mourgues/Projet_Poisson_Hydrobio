@@ -1,0 +1,86 @@
+---
+title: "01_Construction_jeux_donnees_ASPE_stations"
+author: "Julia"
+date: "2026-01-23"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Script permettant de construire un premier jeu de données destiné à visualiser les années échantillonnées pour chaque station.
+
+## Charger les packages
+
+```{r}
+library(aspe)
+library(dplyr)
+library(usethis)
+library(stringr)
+library(ggplot2)
+library(wesanderson)
+library(sf) #permet de manipuler des données spatiales
+```
+
+## Construire le jeu de données
+
+### Charger les données issues de la base Aspe
+
+Les données utilisées ont préalablement été téléchargée à l'aide du script "00_Recuperation_donnees_ASPE".
+
+```{r}
+data_aspe <- misc_nom_dernier_fichier(repertoire="~/Git/Projet_Poisson_Hydrobio/Data", pattern="^tables") #Permet de sélectionner les données téléchargées le plus récemment
+load(data_aspe)
+```
+
+### Définition de nos paramètres
+
+Nous allons définir des paramètres qui vont nous permettre de simplifier les codes lors de la construction de notre jeux de données
+
+```{r}
+code_departement <- c("14","27","28","76", "61","50") #Départements qui nous intéressent
+
+station_suivie <- st_read("~/Git/Projet_Poisson_Hydrobio/Data/Stations_peche.gpkg") %>% #lecture du geopackage contenant la liste des stations que l'on étudie
+  filter(Etat== "actif") #sélection des stations actives
+
+annee_depart <- 2010
+
+annee_fin <- 2025
+```
+
+### Mise en correspondance des tables principales
+
+Création d'une "passerelle" qui met en correspondance les identifiants des tables principales de la base
+
+```{r}
+passerelle <- aspe::mef_creer_passerelle()
+```
+
+Pour alléger les requêtes, on commence par sélectionner les départements correspondant à notre étude. Puis on ajoute les dates des opérations, la qualification des données, le libelle SANDRE des strations ainsi que les réseaux de pêche.
+
+```{r}
+aspe_nor <- passerelle %>% 
+  mef_ajouter_dept() %>% 
+  filter(dept %in% code_departement)%>%#Sélection des 5 départements normands 
+  mef_ajouter_ope_date() %>%#on ajoute les dates
+  mef_ajouter_qualification()%>% #ajout de la qualification des données (correcte/incorrecte)
+  mef_ajouter_libelle_site(origine_libelle="station_sandre")%>%
+  mef_ajouter_ipr()%>%
+  mef_ajouter_objectif() #ajouter les réseaux de pêche
+```
+
+On fait une jointure afin d'associer les codes SANDRE au libellé SANDRE de chaque station. Ensuite nous pouvons sélectionner nos stations de travail à l'aide du code SANDRE.
+
+```{r}
+aspe_nor<-aspe_nor%>%
+  inner_join(station%>%select(sta_id,sta_code_sandre,sta_coordonnees_x,sta_coordonnees_y), by="sta_id")%>%
+  filter(sta_code_sandre %in% station_suivie$Code.Station.SANDRE, # Sélectionner les stations qui nous intéressent
+    annee >= annee_depart,
+    annee <= annee_fin,
+    niq_libelle == "Correcte")%>%
+  mutate (sta_libelle_sandre=str_to_sentence(str_to_lower(sta_libelle_sandre)))#Mettre une majuscule au début des libellés puis mettre la suite en minuscules
+
+```
+
+
