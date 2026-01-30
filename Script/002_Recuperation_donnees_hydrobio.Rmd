@@ -1,0 +1,90 @@
+---
+title: "00_Recuperation_donnees_hydrobio"
+author: "Julia"
+date: "2026-01-23"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Script Permettant de récupérer les données d'hydrobiologie à partir de l'API Hub'Eau
+
+## Chargement des packages
+
+```{r}
+library(hubeau) #fournit les fonctions pour appeler l'API
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(tidyverse)
+library(sf) #permet de manipuler des données spatiales
+library(lubridate)
+library(here) #permet d'appeler des fonctions qui se trouvent dans notre répertoire de travail
+```
+
+L'API hydrobiologie développée par Hub'Eau donne accès à trois tables provenant de la base de données NAIADES:
+
+-   stations
+
+-   indices
+
+-   taxons
+
+
+Pour récupérer les données, nous allons utiliser des fonctions définies dans le fichier "fun_get_data_hydrobio.R" qui se trouve dans notre répertoire de travail.
+
+## Chargement des fonctions
+
+```{r}
+source(here::here("R","fun_get_data_hydrobio.R"))
+```
+
+## Définition des paramètres nécessaires au fonctionnement des fonctions
+
+```{r message=FALSE}
+code_departement <- c("14","27","28","76", "61","50") #Départements qui nous intéressent
+
+station_suivie <- st_read("~/Git/Projet_Poisson_Hydrobio/Data/Stations_peche.gpkg") %>% #lecture du geopackage contenant la liste des stations que l'on étudie
+  filter(Etat== "actif") #sélection des stations actives
+
+code_indice <- c(`I2M2` = 7613, `IBMR` = 2928, `IBD` = 5856) # I2M2 (7613), IBMR (2928), IBD (5856)
+
+code_eqb <- c(`Diatomées` = 10, `Macroinvertébrés` = 13, `Macrophytes` = 27)#Un vecteur nommé de codes des éléments de qualité biologique.
+
+code_support <- c("10", "13","27")
+
+annee_depart <- 2010
+```
+## 1. Télécharger les stations hydrobiologiques correspondant aux stations suivies
+
+```{r}
+stations <- telecharger_stations(code_departement, station_suivie)
+```
+
+## 2. Télécharger les indices
+
+A présent, nous allons accéder à la table "indices" pour récupérer les indices disponibles pour chaque stations. On utilise les même paramètres définis précédemment.
+
+
+```{r}
+indices <- telecharger_indices(code_departement, station_suivie, code_indice, annee_depart)%>%
+  group_by(libelle_indice, annee, code_qualification)
+```
+
+## 3. Télécharger les listes faunistiques et floristiques sans package Hubeau
+Le téléchargement prend du temps car il y a énormément de données. Il est important de bien choisir l'année de départ pour limiter le temps de téléchargement. 
+
+```{r}
+taxons <- telecharger_listes( code_departement, station_suivie, code_eqb, annee_depart)
+```
+A noter: le tableau obtenue ne contient pas la variable "code_prelevement", j'ai comparé avec le résultat issu de la commande "get_hydrobio_taxon" du package {Hubeau} et elle n'apparait pas non plus.
+
+## Sauvergarder les données au format .rds dans notre répertoire
+```{r}
+# Sauvegarder le résutat au format .rds
+saveRDS(stations, "stations.rds")
+saveRDS(indices, "indices.rds")
+saveRDS(taxons, "taxons.rds")
+```
