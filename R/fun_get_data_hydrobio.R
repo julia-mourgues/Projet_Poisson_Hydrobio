@@ -139,7 +139,7 @@ telecharger_listes <- function(code_departement, station_suivie, code_eqb, annee
 
   if (inherits(listes, "try-error")) {
     
-    message("Téléchargement global échoué → fallback année par année")
+    message("Téléchargement global échoué → téléchargement année par année")
     
     annees <- annee_depart:lubridate::year(Sys.Date())
     
