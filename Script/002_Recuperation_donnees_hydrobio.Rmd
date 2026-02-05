@@ -15,10 +15,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r}
 library(hubeau) #fournit les fonctions pour appeler l'API
-library(dplyr)
-library(stringr)
-library(ggplot2)
-library(tidyverse)
+library(tidyverse) #contient ggplot2 dplyr, tidyr, readr, purrr, tibble, stringr, forcats
 library(sf) #permet de manipuler des données spatiales
 library(lubridate)
 library(here) #permet d'appeler des fonctions qui se trouvent dans notre répertoire de travail
@@ -60,7 +57,7 @@ annee_depart <- 2010
 ## 1. Télécharger les stations hydrobiologiques correspondant aux stations suivies
 
 ```{r}
-stations <- telecharger_stations(code_departement, station_suivie)
+stations_hydrobio <- telecharger_stations(code_departement, station_suivie)
 ```
 
 ## 2. Télécharger les indices
@@ -69,7 +66,7 @@ A présent, nous allons accéder à la table "indices" pour récupérer les indi
 
 
 ```{r}
-indices <- telecharger_indices(code_departement, station_suivie, code_indice, annee_depart)%>%
+indices_hydrobio <- telecharger_indices(code_departement, station_suivie, code_indice, annee_depart)%>%
   group_by(libelle_indice, annee, code_qualification)
 ```
 
@@ -77,14 +74,15 @@ indices <- telecharger_indices(code_departement, station_suivie, code_indice, an
 Le téléchargement prend du temps car il y a énormément de données. Il est important de bien choisir l'année de départ pour limiter le temps de téléchargement. 
 
 ```{r}
-taxons <- telecharger_listes( code_departement, station_suivie, code_eqb, annee_depart)
+taxons_hydrobio <- telecharger_listes( code_departement, station_suivie, code_eqb, annee_depart)
 ```
 A noter: le tableau obtenue ne contient pas la variable "code_prelevement", j'ai comparé avec le résultat issu de la commande "get_hydrobio_taxon" du package {Hubeau} et elle n'apparait pas non plus.
 
-## Sauvergarder les données au format .rds dans notre répertoire
+## Sauvergarder les données au format .csv dans notre répertoire
 ```{r}
 # Sauvegarder le résutat au format .rds
-saveRDS(stations, "stations.rds")
-saveRDS(indices, "indices.rds")
-saveRDS(taxons, "taxons.rds")
+saveRDS(stations_hydrobio, "stations_hydrobio.rds")
+saveRDS(indices_hydrobio, "indices_hydrobio.rds")
+saveRDS(taxons_hydrobio, "taxons_hydrobio.rds")
 ```
+

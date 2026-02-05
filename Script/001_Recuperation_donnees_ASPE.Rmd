@@ -15,9 +15,6 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r}
 library(aspe)
-library(dplyr)
-library(usethis)
-library(stringr)
 ```
 
 ## Importer la base de données de l'IDG (Infrastructure de Données Géographiques)
@@ -35,6 +32,6 @@ imp_importer_aspe_idg(aspe_db)
 ## Sauvergarder les données au format .Rdata dans notre répertoire
 ```{r}
 # Sauvegarder le résutat au format .Rdata
-export_tables_rdata(repertoire = "~/Git/Projet_Poisson_Hydrobio/Data")
+export_tables_rdata(repertoire = "~/Git/Projet_Poisson_Hydrobio/Data/raw_data")
 ```
 

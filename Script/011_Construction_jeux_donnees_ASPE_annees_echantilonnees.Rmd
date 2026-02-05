@@ -15,11 +15,8 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r}
 library(aspe)
-library(dplyr)
-library(usethis)
+library(tidyverse) #contient ggplot2 dplyr, tidyr, readr, purrr, tibble, stringr, forcats
 library(stringr)
-library(ggplot2)
-library(wesanderson)
 library(sf) #permet de manipuler des données spatiales
 ```
 
@@ -30,7 +27,7 @@ library(sf) #permet de manipuler des données spatiales
 Les données utilisées ont préalablement été téléchargée à l'aide du script "00_Recuperation_donnees_ASPE".
 
 ```{r}
-data_aspe <- misc_nom_dernier_fichier(repertoire="~/Git/Projet_Poisson_Hydrobio/Data", pattern="^tables") #Permet de sélectionner les données téléchargées le plus récemment
+data_aspe <- misc_nom_dernier_fichier(repertoire="~/Git/Projet_Poisson_Hydrobio/Data/raw_data", pattern="^tables") #Permet de sélectionner les données téléchargées le plus récemment
 load(data_aspe)
 ```
 
@@ -65,9 +62,12 @@ aspe_nor <- passerelle %>%
   filter(dept %in% code_departement)%>%#Sélection des 5 départements normands 
   mef_ajouter_ope_date() %>%#on ajoute les dates
   mef_ajouter_qualification()%>% #ajout de la qualification des données (correcte/incorrecte)
-  mef_ajouter_libelle_site(origine_libelle="station_sandre")%>%
-  mef_ajouter_ipr()%>%
-  mef_ajouter_objectif() #ajouter les réseaux de pêche
+  mef_ajouter_libelle_site(origine_libelle="station_sandre")%>% #ajouter le libelle SANDRE des stations
+  mef_ajouter_ipr()%>% #Ajouter les valeurs ipr
+  mef_ajouter_objectif() %>% 
+  mef_ajouter_lots() %>%  #ajouter les lots de poissons
+  mef_ajouter_esp() %>% 
+  mef_ajouter_type_lot() 
 ```
 
 On fait une jointure afin d'associer les codes SANDRE au libellé SANDRE de chaque station. Ensuite nous pouvons sélectionner nos stations de travail à l'aide du code SANDRE.
@@ -75,12 +75,22 @@ On fait une jointure afin d'associer les codes SANDRE au libellé SANDRE de chaq
 ```{r}
 aspe_nor<-aspe_nor%>%
   inner_join(station%>%select(sta_id,sta_code_sandre,sta_coordonnees_x,sta_coordonnees_y), by="sta_id")%>%
-  filter(sta_code_sandre %in% station_suivie$Code.Station.SANDRE, # Sélectionner les stations qui nous intéressent
+  inner_join(operation %>% select(ope_id, ope_surface_calculee), by="ope_id") %>% 
+  filter(sta_code_sandre %in% station_suivie$Code.Station.SANDRE,
     annee >= annee_depart,
     annee <= annee_fin,
     niq_libelle == "Correcte")%>%
-  mutate (sta_libelle_sandre=str_to_sentence(str_to_lower(sta_libelle_sandre)))#Mettre une majuscule au début des libellés puis mettre la suite en minuscules
+  mutate (sta_libelle_sandre=str_to_sentence(str_to_lower(sta_libelle_sandre)), #Mettre une majuscule au début des libellés puis mettre la suite en minuscules
+          densite_m2 = ifelse(is.na(ope_surface_calculee) | ope_surface_calculee <= 0,
+                             NA_real_,lop_effectif / ope_surface_calculee)) 
 
+
+```
+
+## Réorganisation des variables
+```{r}
+aspe_nor <- aspe_nor %>% 
+  select(sta_id, sta_code_sandre, sta_libelle_sandre,pop_id,ope_id,pre_id,lop_id,dept,sta_coordonnees_x, sta_coordonnees_y, ope_surface_calculee, ope_date, annee, ipr, cli_id, cli_libelle,obj_id,obj_libelle,esp_id,esp_code_alternatif, esp_nom_commun, esp_nom_latin, tyl_id, tyl_libelle,tlo_id, lop_effectif, densite_m2, niq_libelle)
 ```
 
 

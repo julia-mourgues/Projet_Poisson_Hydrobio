@@ -14,42 +14,41 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Chargement des packages
 ```{r}
-library(dplyr)
-library(usethis)
-library(stringr)
-library(ggplot2)
 library(tidyverse)
-library(wesanderson)
 library(sf) #permet de manipuler des données spatiales
 library(lubridate)
+library(here)
 ```
 
 ## Charger les données
 
 ```{r}
-stations <- readRDS(here("data", "stations.rds"))
-indices <-readRDS(here("data", "indices.rds"))
-taxons <- readRDS(here("data", "taxons.rds"))
+stations_hydrobio <- readRDS(here("Data/raw_data", "stations_hydrobio.rds"))
+indices_hydrobio <-readRDS(here("Data/raw_data", "indices_hydrobio.rds"))
+taxons_hydrobio <- readRDS(here("Data/raw_data", "taxons_hydrobio.rds"))
 ```
 
 ## Sélection des données
 
 Les données sont caractérisées par un niveau de conformité. Ici nous choisissons de travailler seulement sur les données qualifiées de "correctes", ce qui correspond au code qualification "1".
 ```{r}
-stations_clean <- stations%>% #création d'un nouvel objet pour ne pas avoir à télécharger de nouveau toutes les données en cas de modification du code
+stations_clean <- stations_hydrobio%>% #création d'un nouvel objet pour ne pas avoir à télécharger de nouveau toutes les données en cas de modification du code
   select(-uri_station_hydrobio,-date_premier_prelevement,-date_dernier_prelevement,-code_masse_eau, -libelle_masse_eau, -geometry)
 ```
 
 ```{r}
-indices_clean <-indices %>% #création d'un nouvel objet pour ne pas avoir à télécharger de nouveau toutes les données en cas de modification du code
+indices_clean <-indices_hydrobio %>% #création d'un nouvel objet pour ne pas avoir à télécharger de nouveau toutes les données en cas de modification du code
   filter(code_qualification=="1")
+  #filter(code_qualification %in% c("0","1"))
 ```
 
 ```{r}
-taxons_clean <-taxons %>% #création d'un nouvel objet pour ne pas avoir à de nouveau toutes les données en cas de modification du code
-  select(-uri_station_hydrobio,-hauteur_moyenne_lame_eau,-largeur_moyenne_lame_eau,-longueur_prospectee,-coordonnee_x,-coordonnee_y,-code_projection,-code_cours_eau,-libelle_cours_eau,-uri_cours_eau,-code_masse_eau,-libelle_masse_eau,-uri_masse_eau,-code_sous_bassin,-libelle_sous_bassin,-code_bassin,-libelle_bassin, -code_commune,-libelle_commune,-libelle_departement,-code_region,-libelle_region,-latitude,-longitude,-geometry.type,-geometry.crs.type,-geometry.crs.properties.name,-geometry.coordinates1,-geometry.coordinates2)%>%
-  filter(code_qualification=="1")%>%
-  mutate(date_prelevement = as_date(ymd_hms(date_prelevement, tz = "UTC")))
+taxons_clean <- taxons_hydrobio %>% 
+  select(code_station_hydrobio, libelle_station_hydrobio, date_prelevement, code_support, libelle_support, 
+         code_appel_taxon, libelle_appel_taxon, code_type_resultat, libelle_type_resultat, resultat_taxon, 
+         code_qualification, libelle_qualification, code_methode, libelle_methode, libelle_liste_faune_flore, 
+         code_lot, codes_indices_operation, code_departement, code_prelevement, annee) %>% 
+  mutate(date_prelevement = as.Date(substr(date_prelevement, 1, 10)))
 ```
 
 ## Jointure des données en 2 temps
@@ -57,12 +56,15 @@ taxons_clean <-taxons %>% #création d'un nouvel objet pour ne pas avoir à de n
 ### 1. Création de "stations_indices" : Jointure des tables "stations" et "indices"
 
 ```{r}
-stations_indices <- inner_join(stations_clean,indices_clean,by=c("code_station_hydrobio","libelle_station_hydrobio","code_departement"),relationship = "many-to-many")
+stations_indices <- inner_join(stations_clean,indices_clean,by=c("code_station_hydrobio","libelle_station_hydrobio","code_departement"),relationship = "many-to-many") %>% 
+  mutate(date_prelevement = ymd(date_prelevement))
 ```
 
 ### 2. Jointure des tables "stations_indices" et "taxons"
 J'ai effectué une jointure avec "full_join" car avec "inner_join" on perdait des données.
 ```{r}
-hydrobio_final <- full_join(stations_indices,taxons_clean, by=c("code_station_hydrobio","libelle_station_hydrobio","date_prelevement","code_support","libelle_support","code_departement","code_prelevement", "code_qualification","libelle_qualification","annee"),relationship = "many-to-many")
+hydrobio_final <- full_join(stations_indices,taxons_clean, by=c("code_station_hydrobio","libelle_station_hydrobio","date_prelevement","code_support","libelle_support","code_departement","code_prelevement", "code_qualification","libelle_qualification","annee"),relationship = "many-to-many") %>% 
+  relocate(annee, .after = date_prelevement) %>% 
+  select(code_station_hydrobio, libelle_station_hydrobio, code_departement, coordonnee_x, coordonnee_y, geometry, code_cours_eau, libelle_cours_eau, code_support, libelle_support, code_prelevement, date_prelevement, annee, code_indice, libelle_indice, resultat_indice,  code_appel_taxon, libelle_appel_taxon, code_type_resultat, libelle_type_resultat, resultat_taxon, code_methode, libelle_methode, libelle_liste_faune_flore, code_lot, codes_indices_operation, code_qualification, libelle_qualification,)
 ```
 
