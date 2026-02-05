@@ -11,17 +11,14 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # Script permettant d'identifier les séries temporelles et les stations que nous allons étudier ensuite
 
+Ce script permet de compter le nombre d'occurence de chaque indince pour chaque série temporelle. afin ensuite de sélectionner les stations dont les séries temporelles remplissent tous les critères fixés.
 ## Chargement des packages
 
 ```{r}
-library(dplyr)
-library(usethis)
-library(stringr)
-library(ggplot2)
 library(tidyverse)
-library(wesanderson)
 library(sf) #permet de manipuler des données spatiales
 library(lubridate)
+library(mapview)
 ```
 
 ## Chargement des fonctions
@@ -30,68 +27,73 @@ library(lubridate)
 source(here::here("R","fun_borner_series.R"))
 ```
 
-## Définition des paramètres nécessaires au fonctionnement des fonctions
+## Définition des paramètres
 
 ```{r}
 annee_depart <- 2010
 
 annee_fin <- 2025
 
-min_nb_annees <- 7
+n_max_manquant <- 2 #nombre maximum d'année d'années manquantes d'affilé
 
-n_max_manquant <- 2
+occurence_min_IBD <- 5 #occurence min = 0, occurence max =13
 
-nb_indices_requis <-3
+occurence_min_IBMR <- 5 #occurence min = 0, occurence max =13
 
-ma_station <- "04115580" #utilisé pour tester et vérifier mon code
+occurence_min_IPR <- 5 #occurence min = 1, occurence max =16
+
+occurence_min_I2M2 <- 5 #occurence min = 0, occurence max =19
 ```
 
 ## Arrangement des données
 
-### 1. Sélection de l'échantillonnage le plus tardif de l'année pour n'avoir qu'une seule donnée par indice par an.
+### 1. Sélection de l'échantillonnage le plus tardif de l'année pour n'avoir qu'une seule donnée par indice par an et par station.
 
 ```{r}
-selection_serie <- selection_serie%>%
-  group_by(code_station,annee, date_prelevement, code_prelevement,code_support)%>%
+BDD_serie_tempo_clean <- BDD_serie_tempo%>%
+  group_by(code_station,annee,code_support)%>%
   filter(date_prelevement==max(date_prelevement)) 
 ```
 
-### 2. Calcul du nombre d'indices disponibles pour chaque station et chaque annéee
+### 2. Identification des séries temporelles
+
+On va utiliser la fonction "borner_series" disponible dans notre répertoire pour sélectionner les stations suivies depuis suffisamment longtemps et pour lesquelles on a un nombre de données suffisantes
 
 ```{r}
-selection_nb_indices <- selection_serie %>%
-  group_by(code_station, annee) %>%
-  summarise(
-    n_indice = n_distinct(code_indice),
-    .groups = "drop")%>%
-  filter(n_indice>=nb_indices_requis) #on retient les années pour lesquelles on a suffisament d'indices
-```
-
-### 3. Identification des séries temporelles
-
-On va utiliser la fonction "borner_series" disponible dans notre répertoire pour sélectionner les stations suivies depuis suffisamment longtemps et pour lesquelles on a un nombre de données suffisantes.
-
-```{r}
-station_serie_tempo <- selection_nb_indices %>%
+selection_serie_methode2 <- BDD_serie_tempo_clean %>%
+  group_by(code_station,annee, code_indice)%>%
   borner_series(var_id_site=code_station, #variable servant à identifier notre site
                 var_temp=annee,
                 max_nb_obs_manquantes=n_max_manquant) #maximum de valeurs manquantes accepté (défini dans les paramètres)
 ```
+En sortie de cette fonction, nous obtenons un tableau contenant toutes les séries temporelles, leur période et le nombre d'années auquelles a correspond, le nombre d'occurence de chaque indice au cours de la série temporelle.
 
-### 4. Sélection des stations dont les séries temporelles répondent à nos critères
 
-On a obtenu un dataframe contenant la première année d'échantillonnage de la station, l'année de début de la série temporelle, l'année de fin de la série temporelle, le nombre d'années faisant parties de la série temporelle. A présent on filtre les stations pour garder celles qui dont les séries temporelles remplissent nos critères.
+### 3. Sélection des stations dont les séries temporelles répondent à nos critères
 
-```{r}
-station_selectionnees <-station_serie_tempo %>%
-  filter(n_annee>=min_nb_annees)%>% #on garde les stations pour lesquelles on a un nombre d'années suffisant
-  select(-annee_mini)%>%
-  pull(code_station)
-```
-
-On sélectionne dans notre base de données les stations qui satisfont nos critères.
+A présent on filtre les stations pour garder celles qui dont les séries temporelles remplissent nos critères.
 
 ```{r}
-selection_serie_finale <- selection_serie %>%
-  filter(code_station %in% station_selectionnees)
+selection_serie_methode2 <-selection_serie_methode2 %>%
+  filter(n_IBD>= occurence_min_IBD,
+         n_IPR>= occurence_min_IPR,
+         n_I2M2>= occurence_min_I2M2,
+         n_IBMR>= occurence_min_IBMR)%>% 
+  select(-annee_mini)
 ```
+
+On filtre notre base de données en gardant les stations retenues à l'étape précédente
+```{r}
+BDD_serie_tempo_clean <- BDD_serie_tempo_clean %>% 
+  filter(code_station %in% selection_serie_methode2$code_station)
+```
+
+```{r}
+BDD_serie_tempo_clean %>% 
+  mapview(popup = "libelle_station")
+```
+
+```{r}
+stations_etudiees <- selection_serie_methode2$code_station
+```
+
