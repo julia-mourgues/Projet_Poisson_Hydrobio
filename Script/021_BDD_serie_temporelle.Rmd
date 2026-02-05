@@ -1,0 +1,67 @@
+---
+title: "03_BDD_commune"
+author: "Julia"
+date: "2026-01-29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Script permettant de construire une base de données commune aux données ASPE et Hydrobio afin d'identifier les séries temporelles
+
+L'objectif est d'obtenir une base de données contenant les valeurs des différents indices par stations et par années
+
+## Chargement des packages
+```{r}
+library(tidyverse)
+library(sf) #permet de manipuler des données spatiales
+library(lubridate)
+```
+
+## Préparation des données
+On part des deux grosses bases de données créée précédement, et on va garder seulement les variables qui seront utiles ici.
+
+```{r}
+stations_indices_serie <- stations_indices%>%
+  select(-code_qualification,-libelle_qualification,-geometry)
+```
+
+```{r}
+aspe_serie <- aspe_nor%>%
+  mutate(code_support="4",
+         libelle_support="Poissons",
+         code_indice="7036",
+         libelle_indice="IPR")%>%
+  select(-sta_id,-pop_id,-pre_id,-lop_id,-niq_libelle,-obj_libelle,-cli_id,-cli_libelle,-obj_id,-tyl_id,-tlo_id,-lop_effectif,-esp_code_alternatif,-esp_id,-esp_nom_commun,-esp_nom_latin,-tyl_libelle)%>% 
+  inner_join(stations_hydrobio%>%select(code_station_hydrobio,code_cours_eau,libelle_cours_eau), by=c("sta_code_sandre" = "code_station_hydrobio"))
+```
+
+## Faire une jointure de nos deux tables
+Nous allons utiliser "full_join". Cette fonction nécessite d'avoir les mêmes noms de variables dans les deux tableaux.
+
+
+### 1. On crée des dictionnaires permettant de renommer les variables
+```{r}
+map_stations_indices_serie <- c(code_station = "code_station_hydrobio",libelle_station="libelle_station_hydrobio", code_departement="code_departement")
+
+map_aspe_serie <- c(code_station = "sta_code_sandre",libelle_station="sta_libelle_sandre", code_departement="dept",coordonnee_x="sta_coordonnees_x",coordonnee_y="sta_coordonnees_y", resultat_indice="ipr",code_prelevement="ope_id",date_prelevement="ope_date")
+```
+
+Nous appliquons ces dictionnaires à nos tableaux
+
+```{r}
+stations_indices_serie <- stations_indices_serie %>% 
+  rename(any_of(map_stations_indices_serie))
+
+aspe_serie <- aspe_serie %>% 
+  rename(any_of(map_aspe_serie))%>%
+  mutate(code_prelevement = as.character(code_prelevement))
+```
+
+### 2. On effectue la jointure
+```{r}
+BDD_serie_tempo <- bind_rows(stations_indices_serie, aspe_serie)
+```
+
