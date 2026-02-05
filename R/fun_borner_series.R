@@ -21,6 +21,7 @@ borner_series <- function(df,
                           var_temp,
                           var_id_site,
                           max_nb_obs_manquantes) {
+  
   var_temp    <- rlang::enquo(var_temp)
   var_id_site <- rlang::enquo(var_id_site)
   
@@ -35,6 +36,7 @@ borner_series <- function(df,
       annee_mini     = min(!!var_temp, na.rm = TRUE)
     )
   
+  # --- Ajout du comptage des indices ---
   test %>%
     dplyr::mutate(boolean = ifelse(is.na(boolean), 0, boolean)) %>%
     dplyr::group_by(
@@ -46,14 +48,17 @@ borner_series <- function(df,
     dplyr::summarize(
       debut  = suppressWarnings(min(as.character(obs_precedente))),
       fin    = max(as.character(!!var_temp)),
-      # ⬇️ ici, on compte le nombre d'années distinctes dans la série
       n_annee = dplyr::n_distinct(!!var_temp),
+      # Comptage des indices
+      n_IBD = n_distinct( (!!var_temp)[code_indice == "5856"] ), 
+      n_I2M2 = n_distinct( (!!var_temp)[code_indice == "7613"] ), 
+      n_IBMR = n_distinct( (!!var_temp)[code_indice == "2928"] ), 
+      n_IPR = n_distinct( (!!var_temp)[code_indice == "7036"] ),
       .groups = "drop"
     ) %>%
     dplyr::ungroup() %>%
     dplyr::select(-group) %>%
     dplyr::mutate(
-      # si le tout début n’a pas de précédent (NA), on corrige le début
       debut  = ifelse(is.na(debut), annee_mini, debut)
     )
 }
