@@ -1,0 +1,141 @@
+---
+title: "022_Test_Serie_tempo_DCE"
+author: "Julia"
+date: "2026-02-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Les cycles DCE ont une urée de 6 ans, les 3 derniers cycles sont: 2010-2025, 2016-2021, 2022-2027
+
+Nous allons essayer de travailler sur des séries temporelles en séparant les années en fonction des cycles DCE.
+
+
+## Chargement des packages
+
+```{r}
+library(dplyr)
+library(usethis)
+library(stringr)
+library(ggplot2)
+library(tidyverse)
+library(wesanderson)
+library(sf) #permet de manipuler des données spatiales
+library(lubridate)
+library(mapview)
+```
+
+## Chargement des fonctions
+
+```{r}
+source(here::here("R","fun_borner_series.R"))
+source(here::here("R","fun_cycle_DCE.R"))
+```
+
+## Identifier les cycles DCE
+
+```{r}
+BDD_serie_tempo_DCE <- BDD_serie_tempo %>% 
+  mutate(cycle_DCE = cycle_DCE(annee))
+```
+
+## Définition des paramètres
+
+```{r}
+n_max_manquant <- 2 #nombre maximum d'année d'années manquantes d'affilé
+
+occurence_min_IBD <- 2 #occurence min = 0, occurence max =13
+
+occurence_min_IBMR <- 2 #occurence min = 0, occurence max =13
+
+occurence_min_IPR <- 2 #occurence min = 1, occurence max =16
+
+occurence_min_I2M2 <- 2 #occurence min = 0, occurence max =19
+```
+
+
+## Sélection de l'échantillonnage le plus tardif de l'année pour n'avoir qu'une seule donnée par indice par an et par station.
+
+```{r}
+BDD_serie_tempo_DCE <- BDD_serie_tempo_DCE%>%
+  group_by(code_station,annee,code_support)%>%
+  filter(date_prelevement==max(date_prelevement)) 
+```
+
+
+## Identification des séries temporelles
+
+On va utiliser la fonction "borner_series" disponible dans notre répertoire pour sélectionner les stations suivies depuis suffisamment longtemps et pour lesquelles on a un nombre de données suffisantes
+
+### Cycle 1: 2010-2015
+```{r}
+selection_serie_cycle1 <- BDD_serie_tempo_DCE %>%
+  group_by(code_station,annee, code_indice,cycle_DCE)%>%
+  filter(cycle_DCE == "2010-2015") %>% 
+  borner_series(var_id_site=code_station, #variable servant à identifier notre site
+                var_temp=annee,
+                max_nb_obs_manquantes=n_max_manquant) %>% #maximum de valeurs manquantes accepté (défini dans les paramètres)
+  filter(n_annee>=min_nb_annees,
+         n_IBD>= occurence_min_IBD,
+         n_IPR>= occurence_min_IPR,
+         n_I2M2>= occurence_min_I2M2,
+         n_IBMR>= occurence_min_IBMR)%>% 
+  select(-annee_mini)
+```
+0 observations
+
+
+### Cycle 2: 2016-2021
+```{r}
+selection_serie_cycle2 <- BDD_serie_tempo_DCE %>%
+  group_by(code_station,annee, code_indice,cycle_DCE)%>%
+  filter(cycle_DCE == "2016-2021") %>% 
+  borner_series(var_id_site=code_station, #variable servant à identifier notre site
+                var_temp=annee,
+                max_nb_obs_manquantes=n_max_manquant) %>% #maximum de valeurs manquantes accepté (défini dans les paramètres)
+  filter(n_annee>=min_nb_annees,
+         n_IBD>= occurence_min_IBD,
+         n_IPR>= occurence_min_IPR,
+         n_I2M2>= occurence_min_I2M2,
+         n_IBMR>= occurence_min_IBMR)%>% 
+  select(-annee_mini)
+```
+On obtient 53 stations
+
+### Cycle 3: 2022-2027
+```{r}
+selection_serie_cycle3 <- BDD_serie_tempo_DCE %>%
+  group_by(code_station,annee, code_indice,cycle_DCE)%>%
+  filter(cycle_DCE == "2022-2027") %>% 
+  borner_series(var_id_site=code_station, #variable servant à identifier notre site
+                var_temp=annee,
+                max_nb_obs_manquantes=n_max_manquant) %>% #maximum de valeurs manquantes accepté (défini dans les paramètres)
+  filter(n_annee>=min_nb_annees,
+         n_IBD>= occurence_min_IBD,
+         n_IPR>= occurence_min_IPR,
+         n_I2M2>= occurence_min_I2M2,
+         n_IBMR>= occurence_min_IBMR)%>% 
+  select(-annee_mini)
+```
+On obtient 24 stations
+
+## On filtre pour identifier les stations communes aux cycles 2016-2021 et 2022-2027
+```{r}
+selection_station_DCE <- selection_serie_cycle2 %>% 
+  filter(code_station %in% selection_serie_cycle3$code_station)
+```
+on obtient 22 stations
+
+## On filtre notre base de données en gardant les stations retenues à l'étape précédente
+```{r}
+BDD_serie_tempo_DCE<- BDD_serie_tempo_DCE %>% 
+  filter(code_station %in% selection_station_DCE$code_station)
+```
+
+```{r}
+BDD_serie_tempo_DCE %>% 
+  mapview(popup = "libelle_station")
+```
